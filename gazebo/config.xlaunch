@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XLaunch WindowMode="MultiWindow" ClientMode="NoClient" LocalClient="False" Display="0" LocalProgram="xcalc" RemoteProgram="xterm" RemotePassword="" RemoteUser="" RemoteHost="" RemoteProtocol="SSH" AdditionalParameters="-ac" Clipboard="True" ClipboardPrimary="True" ExtraParams="-ac" Wgl="True" DisableAC="True" XDMCPHost="" XDMCPBroadcast="False" XDMCPIndirect="False" />

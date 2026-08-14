@@ -1,0 +1,136 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="quadrotor_mission_world">
+    <gravity>0 0 -9.81</gravity>
+
+    <!-- Physics parameters -->
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+
+    <!-- Sun Light Source -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- Ground Plane -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- HOME Helipad Indicator (0, 0, 0.01) -->
+    <model name="home_pad">
+      <static>true</static>
+      <pose>0 0 0.005 0 0 0</pose>
+      <link name="pad_link">
+        <visual name="pad_visual">
+          <geometry>
+            <cylinder><radius>2.0</radius><length>0.01</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.1 0.7 0.3 0.8</ambient>
+            <diffuse>0.1 0.8 0.3 0.8</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Waypoint A Beacon Visual (North: 20m, East: 18m) -->
+    <model name="waypoint_a">
+      <static>true</static>
+      <pose>18 20 3.0 0 0 0</pose>
+      <link name="beacon_link">
+        <visual name="beacon_sphere">
+          <geometry>
+            <sphere><radius>0.6</radius></sphere>
+          </geometry>
+          <material>
+            <ambient>0.1 0.8 0.9 0.9</ambient>
+            <diffuse>0.1 0.8 0.9 0.9</diffuse>
+          </material>
+        </visual>
+        <visual name="beacon_pole">
+          <pose>0 0 -3.0 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.05</radius><length>6.0</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.2 0.7 0.8 0.4</ambient>
+            <diffuse>0.2 0.7 0.8 0.4</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Waypoint B Beacon Visual (North: -4m, East: 42m) -->
+    <model name="waypoint_b">
+      <static>true</static>
+      <pose>42 -4 3.0 0 0 0</pose>
+      <link name="beacon_link">
+        <visual name="beacon_sphere">
+          <geometry>
+            <sphere><radius>0.6</radius></sphere>
+          </geometry>
+          <material>
+            <ambient>0.9 0.7 0.1 0.9</ambient>
+            <diffuse>0.9 0.7 0.1 0.9</diffuse>
+          </material>
+        </visual>
+        <visual name="beacon_pole">
+          <pose>0 0 -3.0 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.05</radius><length>6.0</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.8 0.6 0.1 0.4</ambient>
+            <diffuse>0.8 0.6 0.1 0.4</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Waypoint C Beacon Visual (North: -26m, East: 6m) -->
+    <model name="waypoint_c">
+      <static>true</static>
+      <pose>6 -26 3.0 0 0 0</pose>
+      <link name="beacon_link">
+        <visual name="beacon_sphere">
+          <geometry>
+            <sphere><radius>0.6</radius></sphere>
+          </geometry>
+          <material>
+            <ambient>0.8 0.2 0.9 0.9</ambient>
+            <diffuse>0.8 0.2 0.9 0.9</diffuse>
+          </material>
+        </visual>
+        <visual name="beacon_pole">
+          <pose>0 0 -3.0 0 0 0</pose>
+          <geometry>
+            <cylinder><radius>0.05</radius><length>6.0</length></cylinder>
+          </geometry>
+          <material>
+            <ambient>0.7 0.2 0.8 0.4</ambient>
+            <diffuse>0.7 0.2 0.8 0.4</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Quadrotor Drone Model -->
+    <include>
+      <uri>model://quadrotor</uri>
+      <pose>0 0 0.05 0 0 0</pose>
+    </include>
+
+    <!-- GUI Camera View Setup -->
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>-6.0 -6.0 4.5 0 0.45 0.785</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+  </world>
+</sdf>
