@@ -79,6 +79,11 @@ class Dashboard:
         self.last_voice_toast = ""
         self.voice_toast_time = 0.0
         
+        # Interactive Selected Waypoint & Action Card
+        self.selected_wp = None
+        self.current_waypoints = []
+        self.wp_card_buttons = []
+        
         # Dynamic Wind Particles for Map Visualization
         self.wind_particles = [
             {
@@ -255,7 +260,7 @@ class Dashboard:
         pts = [self._world_to_screen(n, e) for (n, e) in trail]
         pygame.draw.lines(self.screen, COL_TRAIL, False, pts, 2)
 
-    def _draw_waypoints(self, gcs):
+    def _draw_waypoints(self, gcs, drone=None):
         home = gcs.get("home_pos", (0.0, 0.0))
         hx, hy = self._world_to_screen(home[0], home[1])
         radius = gcs.get("geofence_radius", config.GEOFENCE_DEFAULT_RADIUS)
@@ -267,6 +272,7 @@ class Dashboard:
         self._text("HOME BASE", (hx + 10, hy - 8), COL_HOME, self.font_tiny)
         
         wps = gcs.get("waypoints", [])
+        self.current_waypoints = wps
         if len(wps) >= 1:
             route_pts = [self._world_to_screen(home[0], home[1])] + [self._world_to_screen(wp.n, wp.e) for wp in wps]
             for i in range(len(route_pts) - 1):
@@ -282,10 +288,31 @@ class Dashboard:
         for wp in wps:
             x, y = self._world_to_screen(wp.n, wp.e)
             col = colors.get(wp.name, (180, 180, 220))
-            pygame.draw.circle(self.screen, col, (x, y), 6)
+            is_sel = (self.selected_wp == wp.name)
+            
+            if is_sel:
+                # Pulsing selection ring & target reticle
+                pulse = int(12 + 3 * math.sin(time.time() * 8))
+                pygame.draw.circle(self.screen, COL_AMBER, (x, y), pulse, 2)
+                pygame.draw.line(self.screen, COL_AMBER, (x - pulse - 4, y), (x - pulse + 4, y), 2)
+                pygame.draw.line(self.screen, COL_AMBER, (x + pulse - 4, y), (x + pulse + 4, y), 2)
+                pygame.draw.line(self.screen, COL_AMBER, (x, y - pulse - 4), (x, y - pulse + 4), 2)
+                pygame.draw.line(self.screen, COL_AMBER, (x, y + pulse - 4), (x, y + pulse + 4), 2)
+
+            pygame.draw.circle(self.screen, col, (x, y), 7 if is_sel else 6)
             pygame.draw.circle(self.screen, (15, 18, 26), (x, y), 3)
-            self._text(f"{wp.name} ({wp.alt:.0f}m)", (x + 8, y - 8), col, self.font_tiny)
+            self._text(f"{wp.name} ({wp.alt:.0f}m)", (x + 9, y - 9), COL_AMBER if is_sel else col, self.font_btn if is_sel else self.font_tiny)
         
+        # Draw Orbit POI circle if active
+        if gcs.get("orbit_active"):
+            oc = gcs.get("orbit_center")
+            if oc:
+                ox, oy = self._world_to_screen(oc[0], oc[1])
+                orb_r = int(15.0 * self.scale)
+                pygame.draw.circle(self.screen, (170, 70, 230), (ox, oy), orb_r, 1)
+                pygame.draw.circle(self.screen, (220, 100, 255), (ox, oy), 4)
+                self._text("POI ORBIT CENTER", (ox + 8, oy + 6), (220, 100, 255), self.font_tiny)
+
         tp = gcs.get("target_pos")
         if tp:
             x, y = self._world_to_screen(tp[0], tp[1])
@@ -293,6 +320,46 @@ class Dashboard:
             pygame.draw.circle(self.screen, (255, 255, 255), (x, y), pulse, 2)
             pygame.draw.line(self.screen, (255, 255, 255), (x - 8, y), (x + 8, y), 1)
             pygame.draw.line(self.screen, (255, 255, 255), (x, y - 8), (x, y + 8), 1)
+
+        # Floating Interactive Waypoint Card
+        self.wp_card_buttons = []
+        if self.selected_wp:
+            target_wp = next((w for w in wps if w.name == self.selected_wp), None)
+            if target_wp:
+                dist = math.hypot(drone.est_n - target_wp.n, drone.est_e - target_wp.e) if drone else 0.0
+                card_w, card_h = 430, 52
+                card_x = self.map_rect.left + 14
+                card_y = self.map_rect.top + 70
+                card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
+                pygame.draw.rect(self.screen, (12, 16, 26), card_rect, border_radius=6)
+                pygame.draw.rect(self.screen, COL_AMBER, card_rect, 1, border_radius=6)
+                
+                self._text(f"📍 POINT {target_wp.name} ({target_wp.alt:.0f}m)  |  DIST TO DRONE: {dist:.1f}m", (card_x + 10, card_y + 5), COL_AMBER, self.font_btn)
+                
+                bx = card_x + 8
+                by = card_y + 24
+                bh = 22
+                gap = 6
+                
+                btns = [
+                    ("✈️ FLY TO", "goto", target_wp.name, (20, 60, 110), 76),
+                    ("🛑 HOVER", "hover_at", target_wp.name, (20, 90, 50), 74),
+                    ("🔄 ORBIT", "orbit", target_wp.name, (70, 30, 90), 74),
+                ]
+                if target_wp.name.startswith("P"):
+                    btns.append(("🗑️ DEL", "delete_wp", target_wp.name, (100, 30, 30), 62))
+                    btns.append(("✖️", "close_wp", target_wp.name, (40, 50, 70), 32))
+                else:
+                    btns.append(("✖️ CLOSE", "close_wp", target_wp.name, (40, 50, 70), 74))
+                    
+                for label, act, name, col, bw in btns:
+                    b_rect = pygame.Rect(bx, by, bw, bh)
+                    self.wp_card_buttons.append((b_rect, act, name))
+                    pygame.draw.rect(self.screen, col, b_rect, border_radius=3)
+                    pygame.draw.rect(self.screen, COL_GRID, b_rect, 1, border_radius=3)
+                    surf = self.font_tiny.render(label, True, (255, 255, 255))
+                    self.screen.blit(surf, (b_rect.x + (b_rect.width - surf.get_width()) // 2, b_rect.y + 4))
+                    bx += bw + gap
 
     def _draw_drone(self, drone):
         x, y = self._world_to_screen(drone.est_n, drone.est_e)
@@ -635,25 +702,57 @@ class Dashboard:
 
     def _draw_buttons(self, gcs):
         w_mode = gcs.get("wind_mode", "CALM")
+        is_orbit = gcs.get("orbit_active", False)
+        
         for rect, label, action in self.buttons:
             btn_label = label
+            btn_col = COL_PANEL2
+            border_col = COL_GRID
+            
             if action == "toggle_tts":
                 btn_label = "TTS AUDIO: ON" if self.tts_enabled else "TTS AUDIO: OFF"
             elif action == "cycle_wind":
                 btn_label = f"WIND: {w_mode}"
+                if w_mode in ("STRONG", "STORM"):
+                    btn_col = (45, 30, 40)
             elif action == "cycle_map":
                 btn_label = f"MAP: {self.tile_mgr.mode}"
-            
-            btn_col = COL_PANEL2
-            if action == "cycle_map" and self.tile_mgr.mode == "SATELLITE":
-                btn_col = (30, 45, 65)
-            elif action == "cycle_wind" and w_mode in ("STRONG", "STORM"):
-                btn_col = (45, 30, 40)
-            elif action == "orbit" and gcs.get("orbit_active"):
-                btn_col = (40, 30, 60)
+                if self.tile_mgr.mode == "SATELLITE":
+                    btn_col = (30, 45, 65)
+            elif action == "orbit":
+                if is_orbit:
+                    btn_label = "STOP ORBIT (O)"
+                    btn_col = (90, 25, 65)
+                    border_col = COL_AMBER
+                else:
+                    if self.selected_wp:
+                        btn_label = f"ORBIT {self.selected_wp} (O)"
+                    else:
+                        btn_label = "ORBIT POI (O)"
+            elif action == "pause":
+                if is_orbit:
+                    btn_label = "STOP/HOVER (P)"
+            elif action == "goto_a":
+                if self.selected_wp:
+                    btn_label = f"FLY TO {self.selected_wp}"
+                    btn_col = (20, 50, 90)
+                else:
+                    btn_label = "GOTO POINT A"
+            elif action == "goto_b":
+                if self.selected_wp:
+                    btn_label = f"HOVER {self.selected_wp}"
+                    btn_col = (20, 75, 45)
+                else:
+                    btn_label = "GOTO POINT B"
+            elif action == "goto_c":
+                if self.selected_wp:
+                    btn_label = f"DELETE {self.selected_wp}" if self.selected_wp.startswith("P") else "DESELECT"
+                    btn_col = (85, 30, 30) if self.selected_wp.startswith("P") else (40, 50, 70)
+                else:
+                    btn_label = "GOTO POINT C"
                 
             pygame.draw.rect(self.screen, btn_col, rect, border_radius=4)
-            pygame.draw.rect(self.screen, COL_GRID, rect, 1, border_radius=4)
+            pygame.draw.rect(self.screen, border_col, rect, 1, border_radius=4)
             surf = self.font_btn.render(btn_label, True, COL_TEXT)
             self.screen.blit(surf, (rect.x + (rect.width - surf.get_width()) / 2, rect.y + (rect.height - surf.get_height()) / 2))
 
@@ -678,32 +777,79 @@ class Dashboard:
                 cmds.append(("quit", {}))
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 if ev.button == 1:
-                    if self.map_rect.collidepoint(ev.pos):
-                        n, e = self._screen_to_world(ev.pos[0], ev.pos[1])
-                        cmds.append(("map_point", {"n": n, "e": e, "alt": None}))
-                    elif self.input_rect.collidepoint(ev.pos):
-                        self.input_active = True
-                    else:
-                        self.input_active = False
-                        for rect, label, action in self.buttons:
-                            if rect.collidepoint(ev.pos):
-                                if action == "toggle_tts":
-                                    self.tts_enabled = not self.tts_enabled
-                                    cmds.append(("toggle_tts", {"enabled": self.tts_enabled}))
-                                elif action == "goto_a":
-                                    cmds.append(("goto", {"name": "A"}))
-                                elif action == "goto_b":
-                                    cmds.append(("goto", {"name": "B"}))
-                                elif action == "goto_c":
-                                    cmds.append(("goto", {"name": "C"}))
-                                elif action == "cycle_wind":
-                                    cmds.append(("cycle_wind", {}))
-                                elif action == "cycle_map":
-                                    cmds.append(("cycle_map", {}))
-                                elif action == "orbit":
-                                    cmds.append(("orbit", {}))
-                                else:
-                                    cmds.append((action, {}))
+                    # 1. Check Floating Waypoint Action Card buttons first
+                    clicked_card = False
+                    for b_rect, act, name in getattr(self, "wp_card_buttons", []):
+                        if b_rect.collidepoint(ev.pos):
+                            clicked_card = True
+                            if act == "goto":
+                                cmds.append(("goto", {"name": name}))
+                            elif act == "hover_at":
+                                cmds.append(("hover_at", {"name": name}))
+                            elif act == "orbit":
+                                cmds.append(("orbit", {"name": name}))
+                            elif act == "delete_wp":
+                                cmds.append(("delete_wp", {"name": name}))
+                                self.selected_wp = None
+                            elif act == "close_wp":
+                                self.selected_wp = None
+                            break
+                    
+                    if not clicked_card:
+                        if self.map_rect.collidepoint(ev.pos):
+                            # Check if clicking on an existing waypoint
+                            clicked_existing = None
+                            for wp in getattr(self, "current_waypoints", []):
+                                wx, wy = self._world_to_screen(wp.n, wp.e)
+                                if math.hypot(ev.pos[0] - wx, ev.pos[1] - wy) < 18:
+                                    clicked_existing = wp
+                                    break
+                            
+                            if clicked_existing:
+                                self.selected_wp = clicked_existing.name
+                                self.trigger_voice_toast(f"Selected Point {clicked_existing.name}")
+                            else:
+                                n, e = self._screen_to_world(ev.pos[0], ev.pos[1])
+                                cmds.append(("map_point", {"n": n, "e": e, "alt": None}))
+                                new_num = len([w for w in self.current_waypoints if w.name.startswith("P")]) + 1
+                                self.selected_wp = f"P{new_num}"
+                        elif self.input_rect.collidepoint(ev.pos):
+                            self.input_active = True
+                        else:
+                            self.input_active = False
+                            for rect, label, action in self.buttons:
+                                if rect.collidepoint(ev.pos):
+                                    if action == "toggle_tts":
+                                        self.tts_enabled = not self.tts_enabled
+                                        cmds.append(("toggle_tts", {"enabled": self.tts_enabled}))
+                                    elif action == "goto_a":
+                                        if self.selected_wp:
+                                            cmds.append(("goto", {"name": self.selected_wp}))
+                                        else:
+                                            cmds.append(("goto", {"name": "A"}))
+                                    elif action == "goto_b":
+                                        if self.selected_wp:
+                                            cmds.append(("hover_at", {"name": self.selected_wp}))
+                                        else:
+                                            cmds.append(("goto", {"name": "B"}))
+                                    elif action == "goto_c":
+                                        if self.selected_wp:
+                                            if self.selected_wp.startswith("P"):
+                                                cmds.append(("delete_wp", {"name": self.selected_wp}))
+                                            self.selected_wp = None
+                                        else:
+                                            cmds.append(("goto", {"name": "C"}))
+                                    elif action == "cycle_wind":
+                                        cmds.append(("cycle_wind", {}))
+                                    elif action == "cycle_map":
+                                        cmds.append(("cycle_map", {}))
+                                    elif action == "orbit":
+                                        if self.selected_wp:
+                                            cmds.append(("orbit", {"name": self.selected_wp}))
+                                        else:
+                                            cmds.append(("orbit", {}))
+                                    else:
+                                        cmds.append((action, {}))
                 elif ev.button == 4:  # Scroll Up (Zoom In)
                     self.scale = min(40.0, self.scale * 1.2)
                 elif ev.button == 5:  # Scroll Down (Zoom Out)
@@ -732,7 +878,7 @@ class Dashboard:
                     elif ev.key == pygame.K_p:
                         cmds.append(("pause", {}))
                     elif ev.key == pygame.K_o:
-                        cmds.append(("orbit", {}))
+                        cmds.append(("orbit", {"name": self.selected_wp} if self.selected_wp else {}))
                     elif ev.key == pygame.K_k:
                         cmds.append(("cycle_map", {}))
                     elif ev.key == pygame.K_w:
@@ -740,6 +886,7 @@ class Dashboard:
                     elif ev.key == pygame.K_g:
                         cmds.append(("gust", {"strength": config.WIND_GUST_BURST}))
                     elif ev.key == pygame.K_ESCAPE:
+                        self.selected_wp = None
                         cmds.append(("abort", {}))
                     elif ev.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
                         self.scale = min(40.0, self.scale * 1.2)
@@ -760,7 +907,7 @@ class Dashboard:
         self._draw_grid()
         self._draw_wind_particles(gcs)
         self._draw_trail(gcs.get("trail", []))
-        self._draw_waypoints(gcs)
+        self._draw_waypoints(gcs, drone)
         self._draw_drone(drone)
         self._draw_map_layer_badge()
         self.screen.set_clip(None)

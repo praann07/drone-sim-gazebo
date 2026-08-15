@@ -102,6 +102,7 @@ class GCS:
             else:
                 self.log_msg("Already flying")
         elif action == "land":
+            self.orbit_active = False
             if fc.mode != ctrl.STANDBY:
                 fc.land()
                 self.log_msg("LANDING")
@@ -110,12 +111,14 @@ class GCS:
             else:
                 self.log_msg("Already landed")
         elif action == "rth":
+            self.orbit_active = False
             fc.return_home(self.home_pos)
             self.mission.paused = True
             self.log_msg("RETURNING HOME")
             if self.tts:
                 self.tts.speak("Returning to home base.")
         elif action == "mission":
+            self.orbit_active = False
             if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                 d.arm()
                 self.home_pos = (d.est_n, d.est_e)
@@ -135,6 +138,7 @@ class GCS:
                 if self.tts:
                     self.tts.speak(f"Mission started. Navigating to Point {wp.name}.")
         elif action == "goto":
+            self.orbit_active = False
             name = str(args.get("name", "")).strip().upper()
             wp = next((w for w in self.waypoints if w.name.upper() == name), None)
             if not wp and not name.startswith("P"):
@@ -160,6 +164,7 @@ class GCS:
                 self.log_msg("Point {} not found".format(name))
 
         elif action == "goto_latlon":
+            self.orbit_active = False
             if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                 d.arm()
                 self.home_pos = (d.est_n, d.est_e)
@@ -172,6 +177,7 @@ class GCS:
             if self.tts:
                 self.tts.speak("Navigating to target GPS coordinates.")
         elif action == "map_point":
+            self.orbit_active = False
             if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                 d.arm()
                 self.home_pos = (d.est_n, d.est_e)
@@ -189,12 +195,14 @@ class GCS:
             if self.tts:
                 self.tts.speak(f"New waypoint {name} set. Flying there.")
         elif action == "pause":
+            self.orbit_active = False
             fc.hold_position(d.est_n, d.est_e)
             self.mission.paused = True
             self.log_msg("HOLD POSITION")
             if self.tts:
                 self.tts.speak("Holding position.")
         elif action == "resume":
+            self.orbit_active = False
             if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                 d.arm()
                 self.home_pos = (d.est_n, d.est_e)
@@ -211,12 +219,14 @@ class GCS:
                 self.log_msg("HOVERING")
 
         elif action == "abort":
+            self.orbit_active = False
             fc.return_home(self.home_pos)
             self.mission.paused = True
             self.log_msg("ABORT - RETURN HOME")
             if self.tts:
                 self.tts.speak("Emergency abort. Returning home.")
         elif action == "manual":
+            self.orbit_active = False
             axis = args["axis"]
             val = args["value"] * self.speed_mult
             if axis == "vx":
@@ -296,12 +306,24 @@ class GCS:
             target_wp = None
             if name:
                 target_wp = next((w for w in self.waypoints if w.name.upper() == name or w.name.upper() == f"P{name}"), None)
+                if not target_wp and name.isdigit():
+                    target_wp = next((w for w in self.waypoints if w.name.upper() == f"P{name}"), None)
+
+            # If orbit is already active and no new specific target requested, toggle orbit OFF
+            if self.orbit_active and not name:
+                self.orbit_active = False
+                fc.hold_position(d.est_n, d.est_e)
+                self.log_msg("ORBIT STOPPED - HOLD POSITION")
+                if self.tts:
+                    self.tts.speak("Orbit mode cancelled. Holding position.")
+                return True
+
             if target_wp:
                 self.orbit_center = (target_wp.n, target_wp.e)
                 lbl = target_wp.name
             else:
                 self.orbit_center = (d.est_n, d.est_e)
-                lbl = "Position"
+                lbl = "Current Position"
             if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                 d.arm()
                 self.home_pos = (d.est_n, d.est_e)
@@ -312,7 +334,59 @@ class GCS:
             self.orbit_angle = math.atan2(d.est_e - self.orbit_center[1], d.est_n - self.orbit_center[0])
             self.log_msg(f"POI ORBIT STARTED around {lbl} (R={self.orbit_radius:.0f}m)")
             if self.tts:
-                self.tts.speak(f"Orbiting around Point {lbl}.")
+                self.tts.speak(f"Orbiting around {lbl}.")
+
+        elif action == "orbit_stop":
+            self.orbit_active = False
+            fc.hold_position(d.est_n, d.est_e)
+            self.log_msg("ORBIT STOPPED - HOLD POSITION")
+            if self.tts:
+                self.tts.speak("Orbit mode stopped. Holding position.")
+
+        elif action == "hover_at":
+            name = str(args.get("name", "")).strip().upper()
+            wp = next((w for w in self.waypoints if w.name.upper() == name), None)
+            if not wp and not name.startswith("P"):
+                wp = next((w for w in self.waypoints if w.name.upper() == f"P{name}"), None)
+            if not wp and name.isdigit():
+                idx = int(name) - 1
+                if 0 <= idx < len(self.waypoints):
+                    wp = self.waypoints[idx]
+            if wp:
+                self.orbit_active = False
+                if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
+                    d.arm()
+                    self.home_pos = (d.est_n, d.est_e)
+                fc.goto(wp.n, wp.e, wp.alt)
+                self.target_alt = fc.target_alt
+                self.mission.paused = True
+                self.log_msg(f"FLYING TO HOVER AT {wp.name}")
+                if self.tts:
+                    self.tts.speak(f"Navigating to hover at Point {wp.name}.")
+            else:
+                self.log_msg(f"Point {name} not found")
+
+        elif action == "delete_wp":
+            name = str(args.get("name", "")).strip().upper()
+            target_wp = next((w for w in self.waypoints if w.name.upper() == name or w.name.upper() == f"P{name}"), None)
+            if target_wp:
+                self.waypoints = [w for w in self.waypoints if w != target_wp]
+                if self.mission.points:
+                    self.mission.points = [w for w in self.mission.points if w != target_wp]
+                self.log_msg(f"WAYPOINT {target_wp.name} REMOVED")
+                if self.tts:
+                    self.tts.speak(f"Waypoint {target_wp.name} removed.")
+            else:
+                self.log_msg(f"Waypoint {name} not found to delete")
+
+        elif action == "clear_waypoints":
+            custom_count = len([w for w in self.waypoints if w.name.startswith("P")])
+            self.waypoints = [w for w in self.waypoints if not w.name.startswith("P")]
+            if self.mission.points:
+                self.mission.points = [w for w in self.mission.points if not w.name.startswith("P")]
+            self.log_msg(f"CLEARED {custom_count} CUSTOM WAYPOINTS")
+            if self.tts:
+                self.tts.speak("Custom waypoints cleared.")
         elif action == "add_waypoint":
             self._wp_counter += 1
             name = "P{}".format(self._wp_counter)

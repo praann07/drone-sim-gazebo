@@ -39,7 +39,23 @@ def parse(text):
     if any(k in t for k in ("start mission", "begin mission", "run mission", "execute mission", "follow waypoints", "start")):
         return ("mission", {})
 
-    # Pause / Hover / Position Hold commands
+    # Stop / Cancel Orbit commands
+    if any(k in t for k in ("stop orbit", "cancel orbit", "exit orbit", "undo orbit", "end orbit", "stop circling", "cancel circling")):
+        return ("orbit_stop", {})
+
+    # Hover at Waypoint ("hover at p1", "hover at point 1", "hover at point a", "hold at p1")
+    if any(k in t for k in ("hover at", "hover on", "hold at", "stay at", "hover point")):
+        m_p_hov = re.search(r"\bp\s*(\d+)\b", t)
+        if m_p_hov:
+            return ("hover_at", {"name": f"P{m_p_hov.group(1)}"})
+        m_num_hov = re.search(r"(?:point|location|waypoint|at)?\s*(\d+)\b", t)
+        if m_num_hov and m_num_hov.group(1):
+            return ("hover_at", {"name": f"P{m_num_hov.group(1)}"})
+        m_hov = re.search(r"(?:point|location|waypoint|at)?\s*([a-h]|p\d+)\b", t)
+        if m_hov:
+            return ("hover_at", {"name": m_hov.group(1).upper()})
+
+    # Pause / Hover / Position Hold commands (general)
     if any(k in t for k in ("pause", "hover", "stop", "hold position", "stay here", "freeze", "halt", "hold")):
         return ("pause", {})
 
@@ -51,12 +67,32 @@ def parse(text):
     if any(k in t for k in ("abort", "emergency", "cancel mission", "disarm", "cut motors", "emergency stop", "kill")):
         return ("abort", {})
 
-    # POI Orbit / Circle Mode ("orbit point a", "circle point b", "orbit")
+    # POI Orbit / Circle Mode ("orbit point a", "orbit p1", "circle point 1", "orbit")
     if any(k in t for k in ("orbit", "circle", "loiter around")):
+        m_p_orb = re.search(r"\bp\s*(\d+)\b", t)
+        if m_p_orb:
+            return ("orbit", {"name": f"P{m_p_orb.group(1)}"})
+        m_num_orb = re.search(r"(?:point|location|waypoint)?\s*(\d+)\b", t)
+        if m_num_orb and m_num_orb.group(1):
+            return ("orbit", {"name": f"P{m_num_orb.group(1)}"})
         m_orb = re.search(r"(?:point|location|waypoint|to)?\s*([a-h]|p\d+)\b", t)
         if m_orb:
             return ("orbit", {"name": m_orb.group(1).upper()})
         return ("orbit", {})
+
+    # Delete / Remove Waypoints ("delete p1", "remove point 1", "clear waypoints")
+    if any(k in t for k in ("clear all waypoints", "clear waypoints", "delete all waypoints", "reset waypoints")):
+        return ("clear_waypoints", {})
+    if any(k in t for k in ("delete", "remove", "clear point")):
+        m_p_del = re.search(r"\bp\s*(\d+)\b", t)
+        if m_p_del:
+            return ("delete_wp", {"name": f"P{m_p_del.group(1)}"})
+        m_num_del = re.search(r"(?:point|location|waypoint)?\s*(\d+)\b", t)
+        if m_num_del and m_num_del.group(1):
+            return ("delete_wp", {"name": f"P{m_num_del.group(1)}"})
+        m_del = re.search(r"(?:point|location|waypoint)?\s*([a-h]|p\d+)\b", t)
+        if m_del:
+            return ("delete_wp", {"name": m_del.group(1).upper()})
 
     # Dynamic Wind & Gust Simulation Commands
     if any(k in t for k in ("wind calm", "calm wind", "no wind", "zero wind", "stop wind")):
@@ -91,8 +127,6 @@ def parse(text):
         return ("map_mode", {"mode": "GRID"})
     if any(k in t for k in ("change map", "switch map", "toggle map", "next map")):
         return ("cycle_map", {})
-
-
 
     # Direct Custom Dropped Waypoint Patterns (e.g. "point p1", "point p 1", "go to p1", "p1", "p2")
     m_p = re.search(r"\bp\s*(\d+)\b", t)
