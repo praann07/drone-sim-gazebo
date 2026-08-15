@@ -45,15 +45,6 @@ class GCS:
         self.orbit_speed = 0.35  # rad/s
         self.orbit_angle = 0.0
 
-        # Gazebo 3D Live Telemetry Link
-        try:
-            import sys, os
-            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gazebo")))
-            from gazebo_client import GazeboBridge
-            self.gazebo_bridge = GazeboBridge()
-        except Exception:
-            self.gazebo_bridge = None
-
         try:
             from voice import TTSAnnouncer
             self.tts = TTSAnnouncer(enabled=True)
@@ -512,9 +503,6 @@ class GCS:
             if len(self.trail) > 2000:
                 self.trail = self.trail[-2000:]
 
-        if self.gazebo_bridge:
-            self.gazebo_bridge.send_pose(d)
-
 
 
     def gcs_data(self):
@@ -678,8 +666,6 @@ def run_gui(drone, gcs, cmd_queue, use_voice, smoke=False, auto=False):
             running = False
     if gcs.tts:
         gcs.tts.stop()
-    if gcs.gazebo_bridge:
-        gcs.gazebo_bridge.close()
     pygame_quit()
 
 

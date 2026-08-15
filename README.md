@@ -1,9 +1,8 @@
-# 🚁 ESP32-S3 LiteWing Quadrotor Simulator & Gazebo 11 3D Digital Twin
+# 🚁 ESP32-S3 LiteWing Quadrotor Voice GCS Simulator & Autopilot
 
-An end-to-end drone simulation suite featuring a full 6-DOF physics engine, Voice-Activated Ground Control Station (GCS) Cockpit, Multi-Layer Satellite Mapping, and a real-time Gazebo 11 3D Digital Twin in WSLg.
+An end-to-end drone simulation and ground control station featuring a full 6-DOF physics engine, Voice-Activated Ground Control Station (GCS) Cockpit, Multi-Layer Satellite Mapping, and interactive waypoint mission autonomy for ESP32 / ESP32-S3 drones.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Gazebo](https://img.shields.io/badge/Gazebo-11-orange)
 ![Pygame](https://img.shields.io/badge/Pygame-2D%20GCS-green)
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
 
@@ -12,16 +11,11 @@ An end-to-end drone simulation suite featuring a full 6-DOF physics engine, Voic
 ## 🌟 Key Features
 
 ### 1. 2D Ground Control Station (GCS) Cockpit
-- **Interactive Multi-Layer Maps**: Real-world Satellite (Esri), Dark (CartoDB), Street (OSM), and Grid tiles with caching.
-- **Voice Recognition Cockpit**: Speech-to-Command flight control ("Takeoff", "Land", "Start Mission", "Return Home", "Orbit", "Satellite Map").
-- **Real-Time Telemetry Gauges**: 60 FPS Artificial Horizon (Attitude Indicator), Compass, Altimeter, Battery, Wind Vector, and Failsafes.
-- **Autonomous Waypoint Navigation**: Auto mission trajectory execution with geofencing and automatic safety landing.
-
-### 2. Gazebo 11 3D Digital Twin (WSLg)
-- **High-Fidelity 3D Drone Model**: Custom LiteWing carbon quadrotor with ESCs, FC board, battery pack, GPS mast, and spinning props.
-- **Zero-Latency In-Memory C++ Plugin**: Native `libquadrotor_pose_plugin.so` linked into `gzserver` listening on TCP port 9099.
-- **3D Mission World**: Complete with a home helipad, illuminated waypoint beacons (A, B, C), and orbital camera views.
-- **Asynchronous Telemetry Bridge**: Dedicated background worker thread with auto-reconnection and zero UI stutter.
+- **Interactive Multi-Layer Maps**: Real-world Satellite (Esri), Dark (CartoDB), Street (OSM), and Topographic Grid tiles with caching.
+- **Voice Recognition Cockpit**: Speech-to-Command flight control ("Takeoff", "Land", "Start Mission", "Return Home", "Orbit", "Satellite Map", "Hover at P1").
+- **Real-Time Telemetry Gauges**: 60 FPS Artificial Horizon (Attitude Indicator), Heading Compass, Altimeter, Battery Voltage, Wind Vector, and Failsafes.
+- **Interactive Waypoint Autonomy**: Click to add custom waypoints (`P1`, `P2`, etc.), select points for instant **Fly To**, **Hover**, **Orbit**, or **Delete** actions.
+- **Failsafe & Geofencing**: Automatic Return to Home (RTH) on critical battery, link timeout, or geofence boundary breach.
 
 ---
 
@@ -29,37 +23,45 @@ An end-to-end drone simulation suite featuring a full 6-DOF physics engine, Voic
 
 ### 1. Requirements
 - **Windows 10/11** with Python 3.10+
-- **WSL2 Ubuntu** with Gazebo 11 (installed via Pixi)
-
-### 2. Python Dependencies
+- Dependencies:
 ```bash
 pip install pygame-ce SpeechRecognition pyttsx3 requests pillow
 ```
 
-### 3. Run the Simulation
-Launch both the Gazebo 3D World and Voice GCS Cockpit with a single command:
+### 2. Run the Simulator
+Launch the simulation with a single click or command:
 ```powershell
-.\run_gazebo_sim.bat
+.\run_sim.bat
 ```
 
 ---
 
-## 🎮 Flight Controls
+## 🎮 Controls Summary
+
+### Interactive Mouse Actions
+- **Click Map (Empty Area)**: Add a new custom waypoint (`P1`, `P2`, ...) and fly there.
+- **Click Existing Waypoint**: Pops up the interactive **Waypoint Action Card** (`[ FLY TO ]`, `[ HOVER ]`, `[ ORBIT ]`, `[ DELETE ]`).
+- **Scroll Wheel**: Smooth zoom in / zoom out.
 
 ### Voice Commands
 | Voice Command | Action |
 | :--- | :--- |
 | **"Takeoff"** | Arms motors and ascends to target altitude |
-| **"Start Mission"** | Initiates autonomous waypoint flight (A $\to$ B $\to$ C $\to$ Home) |
-| **"Orbit"** | Enters circular point-of-interest orbit |
-| **"Return Home" / "RTL"** | Flies back to launch coordinates and initiates safe landing |
-| **"Land"** | Descends and disarms upon ground contact |
+| **"Start Mission"** | Initiates autonomous waypoint flight |
+| **"Orbit" / "Orbit P1"** | Enters circular point-of-interest orbit |
+| **"Stop Orbit" / "Cancel Orbit"** | Exits orbit mode and holds steady in Hover |
+| **"Hover at P1"** | Flies to `P1` and locks position in hover |
+| **"Delete P1"** | Removes custom waypoint `P1` |
+| **"Return Home" / "RTL"** | Flies back to launch coordinates and lands safely |
+| **"Land"** | Descends and disarms upon touchdown |
 | **"Satellite / Dark / Street Map"** | Toggles real-time tile map layer |
 
 ### Keyboard Shortcuts
-- **`Spacebar`**: Takeoff / Land
+- **`Spacebar`**: Takeoff / Land toggle
 - **`M`**: Start Autonomous Mission
-- **`H`**: Return to Home (RTH)
+- **`P`**: Pause / Hover / Position Hold
+- **`O`**: Toggle POI Orbit Mode (Start / Stop)
+- **`H` / `R`**: Return to Home (RTL)
 - **`K`**: Cycle Map Layer (Satellite $\to$ Dark $\to$ Street $\to$ Grid)
 - **`W` / `S`**: Manual Pitch Forward / Backward
 - **`A` / `D`**: Manual Roll Left / Right
@@ -73,19 +75,13 @@ Launch both the Gazebo 3D World and Voice GCS Cockpit with a single command:
 ```
 ├── drone_sim/
 │   ├── main.py              # Main application entry point & event loop
-│   ├── dashboard.py         # 60 FPS Pygame HUD, gauges & map renderer
-│   ├── map_tiles.py         # Async Web-Mercator map tile manager & cache
+│   ├── dashboard.py         # 60 FPS Pygame HUD, gauges, interactive map & action cards
+│   ├── map_tiles.py         # Async Web-Mercator map tile manager & disk cache
 │   ├── physics.py           # 6-DOF Quadrotor equations of motion
 │   ├── controller.py        # Cascaded PID position & attitude controllers
 │   ├── navigation.py        # Waypoint trajectory planner & geofence
+│   ├── commands.py          # Voice command regex parser & intent extractor
 │   └── voice.py             # Vosk/Sphinx Speech Recognition & TTS audio
 │
-├── gazebo/
-│   ├── models/quadrotor/    # SDF 3D LiteWing Quadrotor model
-│   ├── worlds/              # 3D Mission environment & beacons
-│   ├── plugins/             # Native C++ QuadrotorPosePlugin
-│   ├── gazebo_client.py     # Asynchronous TCP telemetry bridge
-│   └── launch_gazebo_wsl.sh # WSLg Gazebo launcher
-│
-└── run_gazebo_sim.bat       # 1-Click launcher for Windows + WSLg
+└── run_sim.bat              # 1-Click native Windows launcher
 ```
