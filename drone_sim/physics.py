@@ -53,6 +53,13 @@ class Drone:
         self.est_roll = 0.0
         self.est_pitch = 0.0
         self.thrust_norm = 0.0
+        self.thrust_total = 0.0
+        self.ax_w = 0.0
+        self.ay_w = 0.0
+        self.az_w = 0.0
+        self.ax_body = 0.0
+        self.ay_body = 0.0
+        self.az_body = -config.G
         self.crashed = False
         
         # Wind & Turbulence Dynamics
@@ -253,6 +260,18 @@ class Drone:
         ax_w -= drag_h * v_rel_n
         ay_w -= drag_h * v_rel_e
         az_w -= drag_v * (-v_rel_up)
+
+        self.ax_w = ax_w
+        self.ay_w = ay_w
+        self.az_w = az_w
+        self.thrust_total = thrust_total
+
+        # IMU Accelerometer Specific Force in Body Frame
+        # fb = R^T * (a_w - [0, 0, g]^T)
+        lin_acc_z = az_w - config.G
+        self.ax_body = rmat[0][0] * ax_w + rmat[1][0] * ay_w + rmat[2][0] * lin_acc_z
+        self.ay_body = rmat[0][1] * ax_w + rmat[1][1] * ay_w + rmat[2][1] * lin_acc_z
+        self.az_body = rmat[0][2] * ax_w + rmat[1][2] * ay_w + rmat[2][2] * lin_acc_z - (thrust_total / config.MASS)
 
         self.vel_n += ax_w * dt
         self.vel_e += ay_w * dt

@@ -38,8 +38,8 @@ def xy_to_latlon(x, y, zoom):
 
 class MapTileManager:
     def __init__(self):
-        self.mode = "DARK"  # "DARK", "SATELLITE", "STREET", "GRID"
-        self.modes = ["DARK", "SATELLITE", "STREET", "GRID"]
+        self.mode = "GRID"  # "GRID", "DARK", "SATELLITE", "STREET"
+        self.modes = ["GRID", "DARK", "SATELLITE", "STREET"]
         self.cache = {}  # (server, z, x, y) -> pygame.Surface
         self.pending = set()
         self.lock = threading.Lock()

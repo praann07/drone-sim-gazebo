@@ -9,15 +9,15 @@ echo ============================================================
 echo.
 echo   [Controls Summary]
 echo   ----------------------------------------------------------
-echo   Voice Commands : "Takeoff", "Land", "Start Mission", "Orbit", "RTL"
+echo   Voice Commands : "Takeoff", "Start Mission", "Run Analysis", "Start Logging"
 echo   Spacebar       : Takeoff / Land Toggle
-echo   M Key          : Start Autonomous Waypoint Mission
-echo   H Key          : Return to Home (RTL)
-echo   K Key          : Switch Map Layer (Satellite / Dark / OSM / Grid)
-echo   W / S          : Manual Pitch Forward / Backward
-echo   A / D          : Manual Roll Left / Right
-echo   Up / Down      : Manual Altitude Ascend / Descend
-echo   Left / Right   : Manual Yaw Rotate Left / Right
+echo   M Key          : Start Waypoint Mission (Points A, B, C, D, HOME)
+echo   U Key          : Toggle High-Rate 250Hz Telemetry Logging
+echo   D Key          : Trigger SINDy ^& DMDc Data-Driven System Identification
+echo   R / H Key      : Return to Home (RTL)
+echo   K Key          : Switch Map Layer (Grid / Dark / Satellite / OSM)
+echo   W Key          : Cycle Wind Condition (Calm / Light / Strong / Storm)
+echo   G Key          : Inject Atmospheric Wind Gust Burst
 echo   ----------------------------------------------------------
 echo.
 echo Launching GCS Cockpit...

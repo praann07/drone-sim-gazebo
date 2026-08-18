@@ -121,5 +121,6 @@ def default_mission():
         Waypoint("A", 20.0, 18.0, config.WAYPOINT_ALT),
         Waypoint("B", -4.0, 42.0, config.WAYPOINT_ALT + 1.0),
         Waypoint("C", -26.0, 6.0, config.WAYPOINT_ALT + 2.0),
+        Waypoint("D", 15.0, -25.0, config.WAYPOINT_ALT + 1.0),
         Waypoint("HOME", 0.0, 0.0, config.WAYPOINT_ALT),
     ]

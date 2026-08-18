@@ -112,11 +112,11 @@ class Dashboard:
             ("START MISSION (M)", "mission"),
             ("PAUSE/HOVER (P)", "pause"),
             ("ORBIT POI (O)", "orbit"),
-            ("GOTO POINT A", "goto_a"),
-            ("GOTO POINT B", "goto_b"),
-            ("GOTO POINT C", "goto_c"),
-            ("MAP: DARK", "cycle_map"),
+            ("LOG 250Hz (U)", "toggle_logging"),
+            ("SINDy/DMD (D)", "run_analysis"),
+            ("MAP LAYER (K)", "cycle_map"),
             ("WIND: CALM", "cycle_wind"),
+            ("WIND GUST (G)", "gust"),
             ("TTS AUDIO: ON", "toggle_tts"),
         ]
         self.buttons = []
@@ -246,13 +246,36 @@ class Dashboard:
         self._text(f"WIND: {w_mode}", (bx + 34, by + 4), col, self.font_btn)
         self._text(f"{w_spd:.1f} m/s ({w_heading:.0f}°)", (bx + 34, by + 16), COL_DIM, self.font_tiny)
 
-    def _draw_map_layer_badge(self):
+    def _draw_map_layer_badge(self, gcs=None):
         bx = self.map_rect.left + 10
         by = self.map_rect.bottom - 32
-        box = pygame.Rect(bx, by, 140, 22)
+        box = pygame.Rect(bx, by, 130, 22)
         pygame.draw.rect(self.screen, (12, 16, 26), box, border_radius=4)
         pygame.draw.rect(self.screen, COL_GRID, box, 1, border_radius=4)
-        self._text(f"🗺️ MAP: {self.tile_mgr.mode}", (bx + 8, by + 4), COL_BLUE, self.font_tiny)
+        self._text(f"🗺️ MAP: {self.tile_mgr.mode}", (bx + 6, by + 4), COL_BLUE, self.font_tiny)
+
+        if gcs:
+            is_log = gcs.get("is_logging", False)
+            samples = gcs.get("log_samples", 0)
+            is_analyzing = gcs.get("is_analyzing", False)
+
+            # Telemetry 250 Hz Recording Badge
+            if is_log:
+                rec_bx = bx + 138
+                rec_box = pygame.Rect(rec_bx, by, 156, 22)
+                pygame.draw.rect(self.screen, (26, 12, 16), rec_box, border_radius=4)
+                pygame.draw.rect(self.screen, COL_RED, rec_box, 1, border_radius=4)
+                pulse = int(3 + 2 * math.sin(time.time() * 8))
+                pygame.draw.circle(self.screen, COL_RED, (rec_bx + 10, by + 11), pulse)
+                self._text(f"REC 250Hz: {samples:,} pts", (rec_bx + 18, by + 4), COL_RED, self.font_tiny)
+
+            # Data-Driven Analysis in Progress Badge
+            if is_analyzing:
+                ana_bx = bx + (302 if is_log else 138)
+                ana_box = pygame.Rect(ana_bx, by, 160, 22)
+                pygame.draw.rect(self.screen, (28, 24, 10), ana_box, border_radius=4)
+                pygame.draw.rect(self.screen, COL_AMBER, ana_box, 1, border_radius=4)
+                self._text("⚙️ SINDy/DMDc FITTING...", (ana_bx + 6, by + 4), COL_AMBER, self.font_tiny)
 
     def _draw_trail(self, trail):
         if len(trail) < 2:
@@ -611,9 +634,12 @@ class Dashboard:
             self._text(f"{name}: {val*100.0:.0f}%", (mx, my - 2), COL_TEXT, self.font_tiny)
 
     def _draw_mission_progress(self, gcs, px, y):
+        mode = gcs.get("mode", "STANDBY")
         miss = gcs.get("mission_active", False)
         orbit = gcs.get("orbit_active", False)
-        if orbit:
+        if mode == "RTH":
+            self._text("MISSION: OVERRIDDEN BY RTH (RETURNING HOME)", (px, y), COL_AMBER, self.font_big)
+        elif orbit:
             self._text("MISSION: POI ORBIT MODE (CIRCLING)", (px, y), COL_PURPLE, self.font_big)
         elif miss:
             idx = gcs.get("mission_index", 0) + 1
@@ -879,6 +905,10 @@ class Dashboard:
                         cmds.append(("pause", {}))
                     elif ev.key == pygame.K_o:
                         cmds.append(("orbit", {"name": self.selected_wp} if self.selected_wp else {}))
+                    elif ev.key == pygame.K_u:
+                        cmds.append(("toggle_logging", {}))
+                    elif ev.key == pygame.K_d:
+                        cmds.append(("run_analysis", {}))
                     elif ev.key == pygame.K_k:
                         cmds.append(("cycle_map", {}))
                     elif ev.key == pygame.K_w:
@@ -909,7 +939,7 @@ class Dashboard:
         self._draw_trail(gcs.get("trail", []))
         self._draw_waypoints(gcs, drone)
         self._draw_drone(drone)
-        self._draw_map_layer_badge()
+        self._draw_map_layer_badge(gcs)
         self.screen.set_clip(None)
         
         # 2. Draw Top Flight Banner & Wind HUD

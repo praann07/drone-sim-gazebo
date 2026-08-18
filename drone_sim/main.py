@@ -1,3 +1,5 @@
+import os
+import sys
 import argparse
 import math
 import queue
@@ -11,6 +13,35 @@ from physics import Drone
 
 import controller as ctrl
 from controller import FlightController
+
+try:
+    from data_logger import TelemetryLogger
+except ImportError:
+    from .data_logger import TelemetryLogger
+
+
+def _find_wp(waypoints, name):
+    n = str(name).strip().upper()
+    if not n:
+        return None
+    for w in waypoints:
+        if w.name.upper() == n:
+            return w
+    for w in waypoints:
+        if w.name.upper().startswith(n) or w.name.upper().startswith(f"{n}:"):
+            return w
+    if n.isdigit():
+        idx = int(n) - 1
+        if 0 <= idx < len(waypoints):
+            return waypoints[idx]
+    if n.startswith("P") and n[1:].isdigit():
+        idx = int(n[1:]) - 1
+        if 0 <= idx < len(waypoints):
+            return waypoints[idx]
+    for w in waypoints:
+        if n in w.name.upper():
+            return w
+    return None
 
 
 class GCS:
@@ -45,6 +76,10 @@ class GCS:
         self.orbit_speed = 0.35  # rad/s
         self.orbit_angle = 0.0
 
+        # High-Rate 250 Hz Flight Telemetry Logger (DDMS)
+        self.logger = TelemetryLogger()
+        self.is_analyzing = False
+
         try:
             from voice import TTSAnnouncer
             self.tts = TTSAnnouncer(enabled=True)
@@ -76,7 +111,16 @@ class GCS:
         fc = self.controller
         if action == "quit":
             return False
-        if action == "toggle_tts":
+        if action == "toggle_logging":
+            if self.logger:
+                self.logger.is_logging = not self.logger.is_logging
+                st = "ACTIVE (250Hz)" if self.logger.is_logging else "PAUSED"
+                self.log_msg(f"TELEMETRY LOGGING: {st}")
+                if self.tts:
+                    self.tts.speak(f"Telemetry recording {st.lower()}.")
+        elif action == "run_analysis":
+            self._trigger_data_analysis()
+        elif action == "toggle_tts":
             if self.tts:
                 self.tts.enabled = args.get("enabled", not self.tts.enabled)
             self.log_msg(f"TTS Audio: {'ENABLED' if (self.tts and self.tts.enabled) else 'DISABLED'}")
@@ -131,16 +175,7 @@ class GCS:
         elif action == "goto":
             self.orbit_active = False
             name = str(args.get("name", "")).strip().upper()
-            wp = next((w for w in self.waypoints if w.name.upper() == name), None)
-            if not wp and not name.startswith("P"):
-                wp = next((w for w in self.waypoints if w.name.upper() == f"P{name}"), None)
-            if not wp and name.startswith("P"):
-                num = name[1:]
-                wp = next((w for w in self.waypoints if w.name.upper() == num), None)
-            if not wp and name.isdigit():
-                idx = int(name) - 1
-                if 0 <= idx < len(self.waypoints):
-                    wp = self.waypoints[idx]
+            wp = _find_wp(self.waypoints, name)
             if wp:
                 if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
                     d.arm()
@@ -336,13 +371,7 @@ class GCS:
 
         elif action == "hover_at":
             name = str(args.get("name", "")).strip().upper()
-            wp = next((w for w in self.waypoints if w.name.upper() == name), None)
-            if not wp and not name.startswith("P"):
-                wp = next((w for w in self.waypoints if w.name.upper() == f"P{name}"), None)
-            if not wp and name.isdigit():
-                idx = int(name) - 1
-                if 0 <= idx < len(self.waypoints):
-                    wp = self.waypoints[idx]
+            wp = _find_wp(self.waypoints, name)
             if wp:
                 self.orbit_active = False
                 if not d.armed or fc.mode in (ctrl.STANDBY, ctrl.LANDING):
@@ -359,7 +388,7 @@ class GCS:
 
         elif action == "delete_wp":
             name = str(args.get("name", "")).strip().upper()
-            target_wp = next((w for w in self.waypoints if w.name.upper() == name or w.name.upper() == f"P{name}"), None)
+            target_wp = _find_wp(self.waypoints, name)
             if target_wp:
                 self.waypoints = [w for w in self.waypoints if w != target_wp]
                 if self.mission.points:
@@ -413,9 +442,35 @@ class GCS:
             self.log_msg("Did not understand command")
         return True
 
+    def _trigger_data_analysis(self):
+        if self.is_analyzing:
+            self.log_msg("Data analysis already running...")
+            return
+        saved_csv = self.logger.save_to_csv() if self.logger else None
+        self.is_analyzing = True
+        self.log_msg("STARTING SINDy & DMDc DATA ANALYSIS...")
+        if self.tts:
+            self.tts.speak("Running SINDy and DMD system identification.")
+
+        def _worker():
+            try:
+                from data_driven_analysis import run_data_driven_pipeline
+                out_dir = run_data_driven_pipeline(saved_csv)
+                self.log_msg(f"ANALYSIS COMPLETE! Artifacts in data_driven_results/")
+                if self.tts:
+                    self.tts.speak("Data driven flight dynamics discovery complete.")
+            except Exception as e:
+                self.log_msg(f"ANALYSIS ERROR: {e}")
+            finally:
+                self.is_analyzing = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def update(self, dt):
         d = self.drone
         fc = self.controller
+        if self.logger:
+            self.logger.record_step(d)
         if fc.mode != ctrl.STANDBY:
             if self.orbit_active and fc.mode == ctrl.GPS and self.orbit_center is not None:
                 self.orbit_angle += self.orbit_speed * dt
@@ -426,6 +481,7 @@ class GCS:
                 center_bearing = math.degrees(math.atan2(self.orbit_center[1] - d.est_e, self.orbit_center[0] - d.est_n)) % 360.0
                 fc.set_heading(center_bearing)
             elif fc.mode == ctrl.GPS and self.mission.active and not self.mission.paused:
+                self.last_cmd_time = d.t
                 wp = self.mission.current()
                 if wp is not None:
                     fc.target_pos = (wp.n, wp.e)
@@ -495,6 +551,10 @@ class GCS:
                 fc.reset()
                 self.log_msg("LANDED - DISARMED")
                 self.rth_triggered = False
+                if self.logger and self.logger.sample_count > 50:
+                    saved_path = self.logger.save_to_csv()
+                    if saved_path:
+                        self.log_msg(f"SAVED {self.logger.sample_count} SAMPLES TO {os.path.basename(saved_path)}")
 
         self.trail_timer += dt
         if self.trail_timer > 0.12:
@@ -537,6 +597,9 @@ class GCS:
             "current_wind_n": self.drone.current_wind_n,
             "current_wind_e": self.drone.current_wind_e,
             "orbit_active": self.orbit_active,
+            "is_logging": self.logger.is_logging if self.logger else False,
+            "log_samples": self.logger.sample_count if self.logger else 0,
+            "is_analyzing": self.is_analyzing,
         }
 
 
@@ -558,6 +621,7 @@ def run_console_loop(drone, gcs, cmd_queue, steps_per_frame=3):
         ("GO TO A", lambda: gcs.handle("goto", {"name": "A"}), lambda d: math.hypot(d.est_n - 20, d.est_e - 18) < 2.0, 60.0),
         ("GO TO B", lambda: gcs.handle("goto", {"name": "B"}), lambda d: math.hypot(d.est_n + 4, d.est_e - 42) < 2.0, 60.0),
         ("GO TO C", lambda: gcs.handle("goto", {"name": "C"}), lambda d: math.hypot(d.est_n + 26, d.est_e - 6) < 2.0, 60.0),
+        ("GO TO D", lambda: gcs.handle("goto", {"name": "D"}), lambda d: math.hypot(d.est_n - 15, d.est_e + 25) < 2.0, 60.0),
         ("RETURN HOME", lambda: gcs.handle("rth", {}), lambda d: math.hypot(d.est_n, d.est_e) < 2.0, 60.0),
         ("LAND", lambda: gcs.handle("land", {}), lambda d: gcs.controller.mode == ctrl.STANDBY, 40.0),
     ]

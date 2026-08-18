@@ -21,6 +21,14 @@ def parse(text):
     if not t:
         return None
 
+    # Data-Driven Modeling & Simulation (DDMS) Analysis & Logging Commands
+    if any(k in t for k in ("run analysis", "data analysis", "run sindy", "run dmd", "discover model", "system identification", "data driven", "analyze data")):
+        return ("run_analysis", {})
+    if any(k in t for k in ("start logging", "stop logging", "toggle logging", "record data", "log telemetry", "save flight data", "record telemetry")):
+        return ("toggle_logging", {})
+    if any(k in t for k in ("perimeter mission", "perimeter flight", "campus perimeter", "survey perimeter")):
+        return ("mission", {})
+
     # Takeoff commands (including phonetic matches like "you cough", "they cough", "take of")
     if any(k in t for k in ("take off", "takeoff", "fly up", "launch", "ascend", "start flight", "lift off", "you cough", "they cough", "take of", "pick off")):
         nums = _num(t)
