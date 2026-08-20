@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="amrita_logo.png" alt="Amrita Vishwa Vidyapeetham" width="420"/>
+</p>
+
 # ESP32 Autonomous Drone Simulator
 
 A full Python simulation of an autonomous quadrotor drone with a Ground Control Station (GCS), voice command interface, cascaded PID flight controller, GPS waypoint navigation, wind disturbance modelling, and a 250 Hz telemetry logger feeding SINDy and DMDc system identification.
@@ -16,6 +20,8 @@ These terms appear throughout the codebase and this document. Read this once bef
 | **NED** | North–East–Down. The standard aerospace world-frame convention. This project uses NEU (North–East–Up) so that altitude is positive upward, which is more intuitive for simulation. |
 | **Body Frame** | A coordinate system fixed to the drone — it tilts and rotates with the vehicle. Motor forces live here. |
 | **World Frame** | A coordinate system fixed to the ground — it never moves. GPS positions, gravity, and wind live here. |
+
+![NED vs NEU Coordinate Frames](ned_vs_neu.png)
 | **Euler Angles** | Three angles (roll φ, pitch θ, yaw ψ) that describe how the body frame is rotated relative to the world frame. The standard way to represent orientation in aerospace. |
 | **Rotation Matrix (R)** | A 3×3 matrix that transforms any vector from body frame into world frame. Derived from the three Euler angles. Without it, you cannot add thrust and gravity (they live in different frames). |
 | **Euler Integration** | The simplest numerical integration: new = old + rate × dt. Used at 250 Hz to advance velocity and position each step. |
