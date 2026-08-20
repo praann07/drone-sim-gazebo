@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/amrita_logo.jpeg" alt="Amrita Logo" width="60%">
+  <img src="amrita_logo.png" alt="Amrita Vishwa Vidyapeetham" width="420"/>
 </p>
 
 
