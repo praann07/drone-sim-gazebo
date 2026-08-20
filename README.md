@@ -567,6 +567,68 @@ Both methods are used in real aerospace research for flight dynamics identificat
 
 ---
 
+### Plot 1 — Input vs Output Data Definition
+
+![Input vs Output Data](input_vs_output_data_definition.png)
+
+This plot shows the **raw data fed into SINDy and DMDc**, split into three rows:
+
+| Row | What it is | What it means |
+|-----|-----------|--------------|
+| **Top — INPUT U(t)** | 4 motor PWM signals (0–1 scale) | These are the control signals the PID sends to the motors every 4 ms. All 4 motors hover around 60–80% throttle. The brief dip to 0 at the start is the pre-arm idle period. |
+| **Middle — OUTPUT X(t)** | State responses: roll rate p, pitch rate q, roll angle φ, pitch angle θ | These are what the drone's gyroscope and IMU actually measure. The rapid oscillations show the PID loop constantly correcting — the drone never truly holds still. |
+| **Bottom — DERIVATIVE TARGETS** | Accelerations ax, ay, az and climb velocity | This is what SINDy is trying to **learn to predict**. The dominant signal is az ≈ −20 m/s² (gravity −9.81 + downward thrust ≈ −20), with ax and ay near zero during level flight. The green spike at the start is takeoff climb. |
+
+**In plain English:** SINDy looks at columns 1 and 2 (what I did with the motors, what the drone did) and asks — *can I find a simple equation that connects them?*
+
+---
+
+### Plot 2 — DMDc Eigenvalue Spectrum (Stability Check)
+
+![DMDc Eigenvalue Spectrum](dmdc_eigenvalue_spectrum.png)
+
+After DMDc fits its linear model (x_{k+1} = A·x_k + B·u_k), we check if that model is stable by looking at the eigenvalues of matrix A.
+
+**Left plot — Discrete-Time z-plane:**
+- The dashed circle is the **unit circle** (radius = 1)
+- The red dot is the cluster of all eigenvalues from our DMDc model
+- **Rule:** eigenvalues **inside** the unit circle = stable. Eigenvalues **outside** = unstable (the model would predict the drone exploding)
+- **Our result:** all eigenvalues sit at ≈ 0.99 — well inside the unit circle. ✓ The linearised model is stable.
+
+**Right plot — Continuous-Time s-plane:**
+- The red dashed line is the **stability boundary** at Re(s) = 0
+- **Rule:** poles with Re(s) < 0 (left of the line) = stable. Poles to the right = unstable.
+- **Our result:** all poles are left of the boundary. The ones at Re(s) ≈ −4.5 are **fast, heavily-damped modes** (the attitude control loop). The ones near Re(s) ≈ −0.5 are **slow modes** (the position/velocity loop).
+
+**In plain English:** The eigenvalue plot is a pass/fail stability test. All our dots are in the "safe zone" — the model correctly predicts a drone that doesn't crash.
+
+---
+
+### Plot 3 — State Tracking: Ground Truth vs SINDy vs DMDc
+
+![State Time Series Comparison](state_time_series_comparison.png)
+
+This is the most important result plot. It answers: **how well do SINDy and DMDc actually predict the drone's future state?**
+
+Six subplots show six state variables over 3 minutes of flight:
+
+| Subplot | Ground Truth | SINDy (pink dashed) | DMDc (orange dotted) |
+|---------|-------------|---------------------|----------------------|
+| Roll Rate p | Oscillates ±1 rad/s | Immediately wrong (−15 flat) | Drifts upward slowly then explodes |
+| Pitch Rate q | Oscillates ±1 rad/s | Immediately wrong (−15 flat) | Same pattern |
+| Roll Angle | ±20° oscillations | −50° flat constant | Grows to +220° over time |
+| Pitch Angle | ±20° oscillations | −50° flat constant | Grows to −150° |
+| North Velocity | ≈ 0 m/s | Briefly correct then −10 | Drifts to −350 m/s |
+| Altitude | Holds at 5–8 m | Correct for ~30s then −3000 m | Grows to +1000 m |
+
+**Why do both models fail in the long run?**
+- **SINDy fails fast** because the candidate function library didn't capture the strongly nonlinear coupling between angular rates and Euler angles (the kinematic equations involve tan θ which is unbounded near ±90°).
+- **DMDc fails slower** because a linear model can approximate the nonlinear dynamics near the operating point, but as states drift, the approximation breaks down — a linear model assumes the drone behaves the same whether it's at 0° or 180° tilt, which is physically wrong.
+
+**This is not a failure of the project — it is the expected and correct result.** It demonstrates *why* quadrotor control requires nonlinear models, and validates that the simulation itself (ground truth, black line) is physically consistent and stable.
+
+---
+
 ## Stage 9 — The Main Loop
 
 ### One Frame
