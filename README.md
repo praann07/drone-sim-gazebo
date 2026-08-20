@@ -1,3 +1,20 @@
+<p align="center">
+  <img src="assets/amrita_logo.jpeg" alt="Amrita Logo" width="60%">
+</p>
+
+
+
+| Name | Roll No. | Email |
+|---|---|---|
+|Mamidala Som Praneeth Babu | CB.SC.U4AIE24029 | cb.sc.u4aie24029@cb.students.amrita.edu |
+|  | CB.SC.U4AIE24102 | cb.sc.u4aie24102@cb.students.amrita.edu |
+| Aravind S Harilal | CB.SC.U4AIE24008 | cb.sc.u4aie24008@cb.students.amrita.edu |
+| Yaswant Reddy | CB.SC.U4AIE24061 | cb.sc.u4aie24061@cb.students.amrita.edu |
+
+---
+
+
+
 # ESP32 Autonomous Drone Simulator
 
 A full Python simulation of an autonomous quadrotor drone with a Ground Control Station (GCS), voice command interface, cascaded PID flight controller, GPS waypoint navigation, wind disturbance modelling, and a 250 Hz telemetry logger feeding SINDy and DMDc system identification.
