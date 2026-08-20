@@ -4,6 +4,137 @@ A full Python simulation of an autonomous quadrotor drone with a Ground Control 
 
 ---
 
+## Glossary — Every Key Term Defined
+
+These terms appear throughout the codebase and this document. Read this once before diving into the stages.
+
+| Term | Definition |
+|------|-----------|
+| **6-DOF** | Six Degrees of Freedom — the drone can move in three translational directions (N/E/Up) and rotate in three angular directions (roll/pitch/yaw). Every rigid body in 3D space has exactly these 6. |
+| **GCS** | Ground Control Station — the software layer that accepts commands, manages missions, enforces failsafes, and passes targets to the flight controller. The human-facing brain of the system. |
+| **Quadrotor** | A rotorcraft with exactly four motors. Unlike a helicopter, it has no tail rotor — yaw is controlled by spinning two motors faster than the other two. |
+| **NED** | North–East–Down. The standard aerospace world-frame convention. This project uses NEU (North–East–Up) so that altitude is positive upward, which is more intuitive for simulation. |
+| **Body Frame** | A coordinate system fixed to the drone — it tilts and rotates with the vehicle. Motor forces live here. |
+| **World Frame** | A coordinate system fixed to the ground — it never moves. GPS positions, gravity, and wind live here. |
+| **Euler Angles** | Three angles (roll φ, pitch θ, yaw ψ) that describe how the body frame is rotated relative to the world frame. The standard way to represent orientation in aerospace. |
+| **Rotation Matrix (R)** | A 3×3 matrix that transforms any vector from body frame into world frame. Derived from the three Euler angles. Without it, you cannot add thrust and gravity (they live in different frames). |
+| **Euler Integration** | The simplest numerical integration: new = old + rate × dt. Used at 250 Hz to advance velocity and position each step. |
+| **dt** | Timestep — how much simulated time passes each physics step. Here dt = 0.004 seconds (250 Hz). |
+| **250 Hz** | The simulation runs the physics loop 250 times per second. This is fast enough to capture the drone's fastest dynamics without numerical instability. |
+| **Thrust** | The upward force produced by spinning propellers. Each motor produces up to 4.0 N; total hover thrust = mass × g = 1.0 × 9.81 = 9.81 N. |
+| **Torque (τ)** | A rotational force. Thrust imbalance between left and right motors produces roll torque; front-back imbalance produces pitch torque; reaction torques produce yaw torque. |
+| **Moment of Inertia (I)** | How hard it is to rotate the drone. I_roll = I_pitch = 0.012 kg·m². I_yaw = 0.02 kg·m² (harder to spin around the vertical axis because mass is spread wide). |
+| **Angular Rate (p, q, r)** | Body-frame angular velocities: p = roll rate, q = pitch rate, r = yaw rate (rad/s). These are what gyroscopes measure. |
+| **Hover Thrust** | The total thrust needed to stay still: T_hover = m × g = 9.81 N. Each of the 4 motors runs at 9.81/16 ≈ 61% throttle during steady hover. |
+| **Drag** | Aerodynamic resistance. Modelled as F_drag = −k_d × v. Coefficient k_d = 0.06 for both horizontal and vertical axes. |
+| **Motor Mixing** | The algebra that converts desired total thrust + three torques into four individual motor throttle commands. Inverts the torque equations. |
+| **Reaction Torque** | When a motor spins clockwise, Newton's 3rd law pushes the drone body counter-clockwise. CW and CCW motors are paired diagonally so their reactions cancel for pitch/roll but add for yaw. |
+| **PID** | Proportional–Integral–Derivative controller. Computes a corrective output from: current error (P), accumulated past error (I), and rate of error change (D). |
+| **Cascaded PID** | Multiple PID loops in series — outer loop output becomes inner loop setpoint. Position → velocity → attitude → angular rate → torques → motors. |
+| **Setpoint** | The target value a PID loop is trying to reach (e.g. target altitude, target position). |
+| **GPS** | Global Positioning System. The simulator fakes GPS by adding Gaussian noise to the true simulated position (σ ≈ 0.5 m horizontal, 0.8 m vertical). |
+| **Flat-Earth** | Approximation that treats the Earth as flat for small distances (<50 km). Converts GPS degrees to metres with: ΔN = Δlat × 111000, ΔE = Δlon × 111000. |
+| **Haversine** | The exact spherical-Earth formula for distance between two GPS coordinates. Used for telemetry reporting. The flat-Earth formula is used inside the controller for speed. |
+| **Waypoint** | A named 3D target position: (name, north_metres, east_metres, altitude_metres). The mission is an ordered list of waypoints. |
+| **RTH** | Return To Home — fly back to the launch point (0, 0) at a safe altitude, then land. Triggered manually or by a failsafe. |
+| **Geofence** | A maximum allowed distance from home (100 m). If the drone exceeds this, the GCS forces an RTH regardless of the current mission. |
+| **Orbit Mode** | The drone circles a Point of Interest at a fixed radius. Each step, the angular position around the POI advances by ω × dt rad, and the nose always points at the centre. |
+| **Vosk** | An offline speech recognition library. Processes raw microphone audio (16000 Hz, mono, 16-bit) and outputs text — no internet required. |
+| **TTS** | Text-To-Speech. The simulator uses a persistent PowerShell process running `System.Speech.Synthesis.SpeechSynthesizer` to speak status announcements. |
+| **SINDy** | Sparse Identification of Nonlinear Dynamics. A data-driven algorithm that discovers the governing equations of the drone from flight telemetry, using sparse regression (STLSQ). |
+| **DMDc** | Dynamic Mode Decomposition with Control. Fits a linear state-space model (x_{k+1} = A·x_k + B·u_k) to flight data. Reveals stability poles and coherent dynamic modes. |
+| **STLSQ** | Sequentially Thresholded Least Squares — the sparse regression algorithm inside SINDy. Alternates between least-squares fit and zeroing small coefficients to find the simplest model. |
+| **State Vector** | The complete description of the drone at one instant: position (N, E, Up), velocity (vN, vE, vUp), attitude (roll, pitch, yaw), angular rates (p, q, r). 12 numbers total. |
+| **Telemetry** | All data logged during flight: state vector + motor commands + wind + battery + sensor readings. Logged at 250 Hz to CSV for post-flight analysis. |
+| **Phonetic Matching** | Deliberately mapping speech-recognition mishearings to correct commands — e.g. "you cough" → takeoff, because Vosk often mishears the word "takeoff". |
+
+---
+
+## What Exactly Happens When You Run This Project
+
+This is a step-by-step trace of what the code does from launch to mission completion.
+
+### Step 1 — Startup (`main.py`)
+
+When you run `python -m drone_sim.main`:
+
+1. All physical constants are loaded from `config.py` (mass, arm length, gains, etc.)
+2. A `Drone` object is created — position set to (0, 0, 0), all velocities zero, all angles zero
+3. A `FlightController` is created with all PID objects initialised
+4. A `GCS` object wraps both — it will manage commands and the mission queue
+5. The default mission waypoints (A, B, C, D, Home) are loaded into `navigation.py`
+6. A voice listener thread starts (if Vosk model is present) — it sits silently waiting for microphone input
+7. A TTS announcer thread starts — it opens a background PowerShell pipe to the speech synthesiser
+8. A data logger object is created — it will write to a timestamped CSV file once armed
+9. The Pygame window opens (in GUI mode), map tiles load, and the main loop begins
+
+### Step 2 — Every Physics Frame (250 times per second)
+
+The main loop runs `drone.step(dt)` — this is where physics lives:
+
+1. **Wind** is sampled from the current wind model (calm/light/strong/storm) and added to the velocity error
+2. **Motor torques** are computed from the four motor throttle commands using the mixing equations (τ_roll, τ_pitch, τ_yaw)
+3. **Angular accelerations** are found: α = τ / I for each axis
+4. **Angular rates** (p, q, r) are updated: p_new = p + α_roll × dt
+5. **Euler kinematic equations** convert (p, q, r) → (φ̇, θ̇, ψ̇) → new Euler angles
+6. **Rotation matrix R** is recomputed from the new Euler angles
+7. **Thrust vector** (pointing up in body frame) is rotated to world frame: F_thrust_world = R × [0, 0, T_total]
+8. **Total world-frame force** = F_thrust_world + F_gravity + F_drag
+9. **Linear acceleration**: a = F_total / mass
+10. **Velocity** and **position** are updated via Euler integration
+11. **Simulated sensors** add noise: GPS noise (σ≈0.5m), barometer noise, IMU noise
+12. **Battery** depletes based on total motor current draw
+13. All 37 state variables are written to the telemetry logger (if armed)
+
+### Step 3 — Flight Controller Update (`controller.py`)
+
+After physics, the GCS calls `controller.update(drone, dt)`:
+
+1. **Altitude PID** reads barometer altitude → computes error vs. target → outputs desired vertical acceleration → becomes thrust command
+2. **Position P controller** reads GPS position → computes (ΔN, ΔE) error → multiplies by Kp=0.9 → outputs desired velocity (clamped to ±3 m/s)
+3. **Velocity → attitude**: desired velocity is converted into desired roll and pitch angles (clamped to ±20°)
+4. **Attitude P controller** reads IMU angles → computes angle errors → multiplies by Kp=7.0 → outputs desired angular rates
+5. **Rate PID** reads gyroscope rates → computes rate errors → outputs torque commands
+6. **Motor mixing** converts (T_total, τ_roll, τ_pitch, τ_yaw) into M0, M1, M2, M3 ∈ [0, 1]
+7. These motor commands are written back to the `Drone` object, which uses them in the next physics step
+
+### Step 4 — GCS Update (`main.py`)
+
+Between physics and controller, the GCS runs its update:
+
+1. **Checks failsafes**: geofence (>100m), battery (<20%→RTH, <10%→land), comms timeout (>5s silence)
+2. **Checks waypoint arrival**: if horizontal distance < 2m AND altitude difference < 1.5m, advance to next waypoint
+3. **Orbit mode**: if active, computes new orbital position around the POI
+4. **Consumes voice queue**: any new commands from the speech recognition thread are processed here
+
+### Step 5 — Command Arrives (example: "take off to 10 meters")
+
+1. Vosk converts microphone audio to text: `"take off to 10 meters"`
+2. `commands.parse()` normalises → matches "take off" keyword → extracts number 10.0 → returns `("takeoff", {"alt": 10.0})`
+3. The GCS receives this tuple and: sets target altitude = 10.0, arms the drone, switches to GPS mode
+4. On the next controller update, altitude PID has a new setpoint of 10.0 m
+5. PID outputs upward thrust → motors spin faster → drone climbs
+6. TTS announces "Ascending to 10 metres" through the PowerShell pipe
+
+### Step 6 — Mission Execution
+
+1. Command `"start mission"` → GCS loads waypoints A→B→C→D→Home into `Mission` object
+2. GCS sets `target = mission.current()` → controller steers toward A (20m N, 18m E)
+3. Position PID drives the drone north and east, altitude PID holds height
+4. Every frame: arrival condition checked. When d < 2m and |Δalt| < 1.5m → `mission.advance()` → target = B
+5. After Home is reached → mission complete → drone hovers
+
+### Step 7 — Post-Flight Analysis
+
+After landing:
+
+1. Data logger flushes CSV (37 columns × N rows at 250 Hz)
+2. SINDy runs on the logged data: builds a library of candidate functions (states, products, trig terms) → STLSQ sparse regression → discovers which terms actually appear in the equations of motion → outputs a symbolic equation per state variable
+3. DMDc runs: computes the best-fit linear matrices A and B such that x_{k+1} ≈ A·x_k + B·u_k → extracts eigenvalues → reports stability (all eigenvalues inside unit circle = stable)
+4. HTML reports are generated with plots of identified coefficients and eigenvalue spectra
+
+---
+
 ## Project Structure
 
 ```
