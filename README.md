@@ -33,8 +33,6 @@ These terms appear throughout the codebase and this document. Read this once bef
 | **NED** | North–East–Down. The standard aerospace world-frame convention. This project uses NEU (North–East–Up) so that altitude is positive upward, which is more intuitive for simulation. |
 | **Body Frame** | A coordinate system fixed to the drone — it tilts and rotates with the vehicle. Motor forces live here. |
 | **World Frame** | A coordinate system fixed to the ground — it never moves. GPS positions, gravity, and wind live here. |
-
-![NED vs NEU Coordinate Frames](ned_vs_neu.png)
 | **Euler Angles** | Three angles (roll φ, pitch θ, yaw ψ) that describe how the body frame is rotated relative to the world frame. The standard way to represent orientation in aerospace. |
 | **Rotation Matrix (R)** | A 3×3 matrix that transforms any vector from body frame into world frame. Derived from the three Euler angles. Without it, you cannot add thrust and gravity (they live in different frames). |
 | **Euler Integration** | The simplest numerical integration: new = old + rate × dt. Used at 250 Hz to advance velocity and position each step. |
@@ -66,6 +64,10 @@ These terms appear throughout the codebase and this document. Read this once bef
 | **State Vector** | The complete description of the drone at one instant: position (N, E, Up), velocity (vN, vE, vUp), attitude (roll, pitch, yaw), angular rates (p, q, r). 12 numbers total. |
 | **Telemetry** | All data logged during flight: state vector + motor commands + wind + battery + sensor readings. Logged at 250 Hz to CSV for post-flight analysis. |
 | **Phonetic Matching** | Deliberately mapping speech-recognition mishearings to correct commands — e.g. "you cough" → takeoff, because Vosk often mishears the word "takeoff". |
+
+### NED vs NEU — Coordinate Frame Comparison
+
+![NED vs NEU Coordinate Frames](ned_vs_neu.png)
 
 ---
 
